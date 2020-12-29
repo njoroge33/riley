@@ -1,17 +1,18 @@
-  
 import datetime
 from django.core import serializers
 from django.shortcuts import render
-from .serializers import RiderSerializer
-from .models import Rider, Otp
+from .serializers import RiderSerializer, RequestSerializer
+from .models import Rider, Otp, Request, BlackList
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
 from django.http import HttpResponse, JsonResponse
 from rest_framework_simplejwt.tokens import RefreshToken
 from .otp import generate_random_otp, get_otp_phone_number, is_otp_expired
+from .code_location import code_location
 import requests as req
 import jwt
+from geopy.geocoders import Nominatim
 
 OTP_URL = 'https://pyris.socialcom.co.ke/api/PushSMS.php?'
 OTP_USERNAME = 'sub_api_user'
@@ -40,6 +41,7 @@ def get_otp(request):
             rider = Rider.objects.get(phone_number=phone)
         except Exception as e:
             return JsonResponse({'status':False, 'message':'Invalid phone number'})
+            # if the rider exists generate and send the otp
         if rider:
             otp_number = generate_random_otp(6)
             message = f'<#> Riley: Your verification code is {otp_number}'
@@ -50,11 +52,9 @@ def get_otp(request):
             response = req.get(OTP_URL, params=payload, verify=False)
 
             if response.status_code == 200:
-                riders=Rider(phone_number=phone, id=rider.id)
-                token = RefreshToken.for_user(riders)
                 new_otp = Otp(phone_number=phone, otp=otp_number, imei=imei)
                 new_otp.save()
-                return JsonResponse({'status':True, 'message':'otp sucessfully created', 'token': str(token)})
+                return JsonResponse({'status':True, 'message':'otp sucessfully created'})
             return JsonResponse({'status':False, 'message':'some error occurred.Please try again'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
 
@@ -65,22 +65,28 @@ def verify_otp(request):
         data = request.data
         phone = data.get('phone')
         otp_number = data.get('otp')
-        token = data.get('token')
     
         try:
             otp = Otp.objects.get(phone_number=phone, otp=otp_number)
             rider = Rider.objects.get(phone_number=phone)
         except Exception as e:
             return JsonResponse({'status':False, 'message':'No otp for the number or wrong otp'})
-        if otp and rider:
-            token = jwt.decode(token, None, None)
-            if token['user_id'] == rider.id:
-                if not is_otp_expired(otp):
+
+        if otp and rider and not is_otp_expired(otp):
+                # After verifying the otp send the pin to the ider to enable them to login
+                pin = rider.pin
+                message = f'<#> Riley: Your pin is {pin}'
+
+                # send request to send pin via sms
+                payload = {'username': OTP_USERNAME, 'password': OTP_PASSWORD, 'shortcode': OTP_SHORTCODE, \
+                    'mobile': get_otp_phone_number(phone), 'message': message}
+                response = req.get(OTP_URL, params=payload, verify=False)
+
+                if response.status_code == 200:
                     rider.active = True
                     rider.save()
                     return JsonResponse({'status':True, 'message':'OK'})
-                return JsonResponse({'status':False, 'message':'The otp has expired'})
-            return JsonResponse({'status':False, 'message':'Wrong token was provided'})
+                return JsonResponse({'status':False, 'message':'The otp has expired'})       
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
     
 # this recieves phone no.& pin 
@@ -94,11 +100,87 @@ def login(request):
             rider = Rider.objects.get(phone_number=phone)
         except Exception as e:
             return JsonResponse({'status':False, 'message':'Wrong phone number was provided'})
-        if rider.pin == pin:
-            return JsonResponse({'status':True, 'message':'logged in  sucessfully'})
-        return JsonResponse({'status':False, 'message':'Wrong phone number was provided'})
+        if rider.pin == int(pin):
+            riders=Rider(phone_number=phone, id=rider.id)
+            token = RefreshToken.for_user(riders)
+            return JsonResponse({'status':True, 'message':'logged in sucessfully', 'token': str(token)})
+        return JsonResponse({'status':False, 'message':'Wrong pin was provided'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
 
+# receives the token
 @api_view(['POST'])
 def logout(request):
-    return JsonResponse({'status':True, 'message':"Logged out sucessfully"})
+    token = request.data.get('token')
+
+    # blacklist the token to log out the user
+    if token:
+        blacklist = BlackList(token=token)
+        blacklist.save()
+        return JsonResponse({'status':True, 'message':"Logged out sucessfully"})
+    return JsonResponse({'status':False, 'message':"Command unsucessful, Wrong token was provided"})
+
+
+class RequestList(viewsets.ModelViewSet):
+    queryset = Request.objects.all()
+    serializer_class = RequestSerializer
+
+    def perform_create(self, serializer):
+        pick = code_location(self.request.data.get('pickup_location'))
+        deliver = code_location(self.request.data.get('delivery_location'))
+
+        if self.request.data.get('rider') == '':
+            serializer.save(status='Pending assignment', pickup_location=pick, delivery_location=deliver)         
+        else:
+            serializer.save(status='Assigned', pickup_location=pick, delivery_location=deliver)
+
+# receives a token
+@api_view(['POST'])
+def get_requests(request):
+    token = request.data.get('token')
+    blacklisted = BlackList.objects.filter(token=token)
+    
+    if token and not blacklisted:
+        decoded_token = jwt.decode(token, None, None)
+        rider_id = decoded_token['user_id']
+
+        result = Request.objects.filter(rider=rider_id)
+        serializer = RequestSerializer(result, many=True)
+        data = serializer.data
+        return JsonResponse({'status':True, 'message':'OK', 'requests': data})
+    return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
+
+# receives a token & request_id & status(accept, picked-up, complete, cancel)
+@api_view(['POST'])
+def update_status(request):
+    data = request.data
+    token = data.get('token')
+    request_id = data.get('id')
+    status = data.get('status')
+    blacklisted = BlackList.objects.filter(token=token)
+
+    if token and not blacklisted:
+        try:
+            request = Request.objects.get(id=request_id)
+        except Exception as e:
+            return JsonResponse({'status':False, 'message':'No request by this id'})
+        if status == 'accept':
+            serializer = RequestSerializer(request, data={'status': 'Accepted'}, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+        elif status == 'picked_up':
+            serializer = RequestSerializer(request, data={'status': 'Enroute'}, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+        elif status == 'complete':
+            serializer = RequestSerializer(request, data={'status': 'Completed'}, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+        elif status == 'cancel':
+            serializer = RequestSerializer(request, data={'status': 'Cancelled'}, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+        else:
+            return JsonResponse({'status':False, 'message':'Please, select a viable status and try again'})
+        return JsonResponse({'status':True, 'message':'OK'})
+    return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
+ 

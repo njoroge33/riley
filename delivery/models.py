@@ -1,4 +1,5 @@
 from django.db import models
+from django_mysql.models import JSONField
 
 # import datetime
 # from phonenumber_field.modelfields import PhoneNumberField
@@ -11,6 +12,8 @@ class Branch(models.Model):
     status = models.BooleanField(null=False, default=True)
     location = models.JSONField(default=dict)
 
+    # def __str__(self):
+    #    return f'{self.location}'
 
 class Rider(models.Model):
     name = models.CharField(max_length=255)
@@ -19,6 +22,9 @@ class Rider(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
     date_modified = models.DateTimeField(auto_now=True)
     pin = models.IntegerField(unique=True, null=False)
+
+    def __str__(self):
+       return f'{self.name}'
 
 class Otp(models.Model):
     phone_number = models.CharField(max_length=20)
@@ -39,21 +45,23 @@ class Request(models.Model):
         ('Pending asignment', 'Pending assignment'),
         ('Assigned', 'Assigned'),
         ('Enroute', 'Enroute'),
+        ('Accepted', 'Accepted'),
+        ('Completed', 'Completed'),
         ('Cancelled', 'Cancelled'),
     )
-    client = models.ForeignKey(Client, on_delete=models.CASCADE)
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
-    rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
+    # client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    branch = models.ForeignKey(Branch, null=True, on_delete=models.CASCADE)
+    rider = models.ForeignKey(Rider, null=True, on_delete=models.CASCADE)
     status = models.CharField(max_length=25, choices=STATUSES_CHOICES)
-    pickup_location = models.JSONField(default=dict)
-    delivery_location = models.JSONField(default=dict)
+    pickup_location = JSONField()
+    delivery_location = JSONField()
     notes = models.TextField()
     date_created = models.DateTimeField(auto_now_add=True)
     date_modified = models.DateTimeField(auto_now=True)
 
-# class BlackList(models.Model):
-#     token = models.CharField(max_length=500, unique=True)
-#     date_added = models.DateTimeField(auto_now_add=True)
+class BlackList(models.Model):
+    token = models.CharField(max_length=255, unique=True)
+    date_added = models.DateTimeField(auto_now_add=True)
     
 
 
