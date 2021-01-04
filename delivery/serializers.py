@@ -5,7 +5,7 @@ from .models import Rider, Request
 class RiderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rider
-        fields = '__all__'
+        exclude = ('pin', )
         
 class RequestSerializer(serializers.ModelSerializer):
     class Meta:

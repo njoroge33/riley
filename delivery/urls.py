@@ -11,8 +11,10 @@ urlpatterns = [
     re_path(r'^', include(router.urls)),
     path('api/auth/otp/request', views.get_otp, name='otp'),
     path('api/auth/otp/verify', views.verify_otp, name='verify'),
+    path('api/auth/pin', views.change_pin, name='change_pin'),
     path('api/auth/login', views.login, name='login'),
     path('api/auth/logout', views.logout, name='logout'),
     path('api/requests/get', views.get_requests, name='requests'),
     path('api/requests/status', views.update_status, name='status'),
+    path('api/location/update', views.update_rider_location, name='location_update')
 ]

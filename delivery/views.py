@@ -2,7 +2,7 @@ import datetime
 from django.core import serializers
 from django.shortcuts import render
 from .serializers import RiderSerializer, RequestSerializer
-from .models import Rider, Otp, Request, BlackList
+from .models import Rider, Otp, Request, BlackList, RiderLocation
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
@@ -22,12 +22,9 @@ OTP_SHORTCODE = 'SOCIALCOM'
 class RiderList(viewsets.ModelViewSet):
     queryset = Rider.objects.all()
     serializer_class = RiderSerializer
-    
-    def post(self,request):
-        serializer = RiderSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        serializer.save(pin=generate_random_otp(4))
 
 # this recieves phone no. and imei
 @api_view(['POST'])
@@ -83,7 +80,7 @@ def verify_otp(request):
                 response = req.get(OTP_URL, params=payload, verify=False)
 
                 if response.status_code == 200:
-                    rider.active = True
+                    rider.active = 'True'
                     rider.save()
                     return JsonResponse({'status':True, 'message':'OK'})
                 return JsonResponse({'status':False, 'message':'The otp has expired'})       
@@ -106,6 +103,38 @@ def login(request):
             return JsonResponse({'status':True, 'message':'logged in sucessfully', 'token': str(token)})
         return JsonResponse({'status':False, 'message':'Wrong pin was provided'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
+
+# this recieves old_pin, new_pin & token
+@api_view(['POST'])
+def change_pin(request):
+    data = request.data
+    token = data.get('token')
+    old_pin = data.get('old_pin')
+    new_pin = data.get('new_pin')
+
+    if len(str(new_pin))== 4:
+        defaults={"pin":int(new_pin)}
+    else:
+        return JsonResponse({'status':False, 'message':'your pin must be 4 digits in length'})
+
+    blacklisted = BlackList.objects.filter(token=token)
+
+    if token and not blacklisted:
+        decoded_token = jwt.decode(token, None, None)
+        rider_id = decoded_token['user_id']
+        print(rider_id)
+        try:
+            obj = Rider.objects.get(id=rider_id)
+            print(type(obj.pin))
+            if obj.pin == int(old_pin):
+                for key, value in defaults.items():
+                    setattr(obj, key, value)
+                obj.save()
+                return JsonResponse({'status':True, 'message':'pin sucessfully changed'})
+            return JsonResponse({'status':False, 'message':'please, input the correct current pin'})
+        except Exception as e:
+            return JsonResponse({'status':False, 'message':'Invalid token was provided'})
+    return JsonResponse({'status':False, 'message':"Unsucessful, No token was provided or token is blaklisted"})
 
 # receives the token
 @api_view(['POST'])
@@ -168,6 +197,9 @@ def update_status(request):
             if serializer.is_valid():
                 serializer.save()
         elif status == 'picked_up':
+            # create the initial instance location of the rider at the pickup point to beinging tracking
+            new_location_instance = RiderLocation(request=request, rider=request.rider, current_location=request.pickup_location)
+            new_location_instance.save()
             serializer = RequestSerializer(request, data={'status': 'Enroute'}, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -180,7 +212,32 @@ def update_status(request):
             if serializer.is_valid():
                 serializer.save()
         else:
-            return JsonResponse({'status':False, 'message':'Please, select a viable status and try again'})
+            return JsonResponse({'status':False, 'message':'Please, select a valid status and try again'})
         return JsonResponse({'status':True, 'message':'OK'})
     return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
- 
+
+# receives a token, request_id & location(json)
+@api_view(['POST'])
+def update_rider_location(request):
+    data = request.data
+    token = data.get('token')
+    request_id = data.get('id')
+    location = data.get('location')
+
+    defaults={"current_location":location}
+    blacklisted = BlackList.objects.filter(token=token)
+
+    if token and not blacklisted:
+        decoded_token = jwt.decode(token, None, None)
+        rider_id = decoded_token['user_id']
+
+        try:
+            obj = RiderLocation.objects.get(request=request_id, rider=rider_id)
+            for key, value in defaults.items():
+                setattr(obj, key, value)
+            obj.save()
+            return JsonResponse({'status':True, 'message':'OK'})
+        except Exception as e:
+            return JsonResponse({'status':False, 'message':"The request doesn't exists"})
+    return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
+

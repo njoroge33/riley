@@ -31,14 +31,6 @@ class Otp(models.Model):
     otp = models.CharField(max_length =6, unique=True)
     imei = models.CharField(max_length=20)
     date_created = models.DateTimeField(auto_now_add=True)
-    
-class RiderLocation(models.Model):
-    rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
-    client = models.ForeignKey(Client, on_delete=models.CASCADE)
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
-    status = status = models.BooleanField(null=False, default=True)
-    date_created = models.DateTimeField(auto_now_add=True)
-    date_modified = models.DateTimeField(auto_now=True)
 
 class Request(models.Model):
     STATUSES_CHOICES = (
@@ -62,6 +54,17 @@ class Request(models.Model):
 class BlackList(models.Model):
     token = models.CharField(max_length=255, unique=True)
     date_added = models.DateTimeField(auto_now_add=True)
+
+class RiderLocation(models.Model):
+    # rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
+    # client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    # branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
+    # status = status = models.BooleanField(null=False, default=True)
+    request = models.OneToOneField(Request, on_delete=models.CASCADE, primary_key=True)
+    rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
+    current_location = JSONField()
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_modified = models.DateTimeField(auto_now=True)
     
 
 
