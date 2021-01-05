@@ -4,20 +4,23 @@ from django_mysql.models import JSONField
 # import datetime
 # from phonenumber_field.modelfields import PhoneNumberField
 class Client(models.Model):
-    name = models.CharField(max_length=255)
-    status = models.BooleanField(null=False, default=True)
+    name = models.CharField(max_length=255, unique=True)
+
+    def __str__(self):
+       return f'{self.name}'
 
 class Branch(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
-    status = models.BooleanField(null=False, default=True)
-    location = models.JSONField(default=dict)
+    location = JSONField()
 
-    # def __str__(self):
-    #    return f'{self.location}'
+    def __str__(self):
+        loc=self.location['address']
+        return f'{self.client.name, loc}'
 
 class Rider(models.Model):
     name = models.CharField(max_length=255)
     phone_number = models.CharField(max_length=20, unique=True)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
     active = models.BooleanField(null=False, default=False)
     date_created = models.DateTimeField(auto_now_add=True)
     date_modified = models.DateTimeField(auto_now=True)
@@ -42,7 +45,7 @@ class Request(models.Model):
         ('Cancelled', 'Cancelled'),
     )
     # client = models.ForeignKey(Client, on_delete=models.CASCADE)
-    branch = models.ForeignKey(Branch, null=True, on_delete=models.CASCADE)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
     rider = models.ForeignKey(Rider, null=True, on_delete=models.CASCADE)
     status = models.CharField(max_length=25, choices=STATUSES_CHOICES)
     pickup_location = JSONField()

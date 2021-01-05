@@ -1,8 +1,8 @@
 import datetime
 from django.core import serializers
 from django.shortcuts import render
-from .serializers import RiderSerializer, RequestSerializer
-from .models import Rider, Otp, Request, BlackList, RiderLocation
+from .serializers import RiderSerializer, RequestSerializer, BranchSerializer
+from .models import Rider, Otp, Request, BlackList, RiderLocation, Client, Branch
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
@@ -49,9 +49,11 @@ def get_otp(request):
             response = req.get(OTP_URL, params=payload, verify=False)
 
             if response.status_code == 200:
+                riders=Rider(phone_number=phone, id=rider.id)
+                token = RefreshToken.for_user(riders)
                 new_otp = Otp(phone_number=phone, otp=otp_number, imei=imei)
                 new_otp.save()
-                return JsonResponse({'status':True, 'message':'otp sucessfully created'})
+                return JsonResponse({'status':True, 'message':'otp sucessfully created', 'token': str(token)})
             return JsonResponse({'status':False, 'message':'some error occurred.Please try again'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
 
@@ -62,28 +64,34 @@ def verify_otp(request):
         data = request.data
         phone = data.get('phone')
         otp_number = data.get('otp')
+        token = data.get('token')
     
         try:
             otp = Otp.objects.get(phone_number=phone, otp=otp_number)
             rider = Rider.objects.get(phone_number=phone)
         except Exception as e:
-            return JsonResponse({'status':False, 'message':'No otp for the number or wrong otp'})
+            return JsonResponse({'status':False, 'message':'Wrong phone number or wrong otp was provided'})
 
-        if otp and rider and not is_otp_expired(otp):
-                # After verifying the otp send the pin to the ider to enable them to login
-                pin = rider.pin
-                message = f'<#> Riley: Your pin is {pin}'
+        if otp and rider:
+            token = jwt.decode(token, None, None)
+            if token['user_id'] == rider.id:
+                if not is_otp_expired(otp):
+                    # After verifying the otp send the pin to the ider to enable them to login
+                    pin = rider.pin
+                    message = f'<#> Riley: Your pin is {pin}'
 
-                # send request to send pin via sms
-                payload = {'username': OTP_USERNAME, 'password': OTP_PASSWORD, 'shortcode': OTP_SHORTCODE, \
-                    'mobile': get_otp_phone_number(phone), 'message': message}
-                response = req.get(OTP_URL, params=payload, verify=False)
+                    # send request to send pin via sms
+                    payload = {'username': OTP_USERNAME, 'password': OTP_PASSWORD, 'shortcode': OTP_SHORTCODE, \
+                        'mobile': get_otp_phone_number(phone), 'message': message}
+                    response = req.get(OTP_URL, params=payload, verify=False)
 
-                if response.status_code == 200:
-                    rider.active = 'True'
-                    rider.save()
-                    return JsonResponse({'status':True, 'message':'OK'})
-                return JsonResponse({'status':False, 'message':'The otp has expired'})       
+                    if response.status_code == 200:
+                        rider.active = 'True'
+                        rider.save()
+                        return JsonResponse({'status':True, 'message':'OK'})
+                return JsonResponse({'status':False, 'message':'The otp has expired'})
+            return JsonResponse({'status':False, 'message':'Wrong token was provided'})
+        # return JsonResponse({'status':False, 'message':'No otp or wrong phone number was provided'})     
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
     
 # this recieves phone no.& pin 
@@ -98,9 +106,11 @@ def login(request):
         except Exception as e:
             return JsonResponse({'status':False, 'message':'Wrong phone number was provided'})
         if rider.pin == int(pin):
-            riders=Rider(phone_number=phone, id=rider.id)
-            token = RefreshToken.for_user(riders)
-            return JsonResponse({'status':True, 'message':'logged in sucessfully', 'token': str(token)})
+            if rider.active:
+                riders=Rider(phone_number=phone, id=rider.id)
+                token = RefreshToken.for_user(riders)
+                return JsonResponse({'status':True, 'message':'logged in sucessfully', 'token': str(token)})
+            return JsonResponse({'status':False, 'message':'Sorry, Your account is deactivated.Please, contact the support team'})
         return JsonResponse({'status':False, 'message':'Wrong pin was provided'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
 
@@ -241,3 +251,18 @@ def update_rider_location(request):
             return JsonResponse({'status':False, 'message':"The request doesn't exists"})
     return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
 
+@api_view(['POST'])
+def create_client(request):
+    data = request.data
+    name = data.get('name')
+    new_client = Client(name=name)
+    new_client.save()
+    return JsonResponse({'status':True, 'message':'OK'})
+
+class BranchList(viewsets.ModelViewSet):
+    queryset = Branch.objects.all()
+    serializer_class = BranchSerializer
+
+    def perform_create(self, serializer):
+        loc = code_location(self.request.data.get('location'))
+        serializer.save(location=loc)

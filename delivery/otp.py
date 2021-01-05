@@ -6,11 +6,6 @@ def generate_random_otp(n):
     range_start = 10**(n-1)
     range_end = (10**n)-1
     otp = randint(range_start, range_end)
-
-    # check if otp has already been generated for the provided phone number
-    # result = Otp.query.filter_by(phone=phone).filter_by(otp=otp).first()
-    # if result:
-    #     generate_random_otp(n, phone)
     return otp
 
 def is_otp_expired(result):
