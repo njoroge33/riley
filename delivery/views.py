@@ -53,18 +53,18 @@ def get_otp(request):
                 token = RefreshToken.for_user(riders)
                 new_otp = Otp(phone_number=phone, otp=otp_number, imei=imei)
                 new_otp.save()
-                return JsonResponse({'status':True, 'message':'otp sucessfully created', 'token': str(token)})
+                return JsonResponse({'status':True, 'message':'otp sucessfully created', 'otp_token': str(token)})
             return JsonResponse({'status':False, 'message':'some error occurred.Please try again'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
 
-# this recieves phone no., token and otp
+# this recieves phone no., otp_token and otp
 @api_view(['POST'])
 def verify_otp(request):
     if request.method == "POST":
         data = request.data
         phone = data.get('phone')
         otp_number = data.get('otp')
-        token = data.get('token')
+        token = data.get('otp_token')
     
         try:
             otp = Otp.objects.get(phone_number=phone, otp=otp_number)
@@ -109,16 +109,16 @@ def login(request):
             if rider.active:
                 riders=Rider(phone_number=phone, id=rider.id)
                 token = RefreshToken.for_user(riders)
-                return JsonResponse({'status':True, 'message':'logged in sucessfully', 'token': str(token)})
+                return JsonResponse({'status':True, 'message':'logged in sucessfully', 'session_token': str(token)})
             return JsonResponse({'status':False, 'message':'Sorry, Your account is deactivated.Please, contact the support team'})
         return JsonResponse({'status':False, 'message':'Wrong pin was provided'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
 
-# this recieves old_pin, new_pin & token
+# this recieves old_pin, new_pin & session_token
 @api_view(['POST'])
 def change_pin(request):
     data = request.data
-    token = data.get('token')
+    token = data.get('session_token')
     old_pin = data.get('old_pin')
     new_pin = data.get('new_pin')
 
@@ -146,10 +146,10 @@ def change_pin(request):
             return JsonResponse({'status':False, 'message':'Invalid token was provided'})
     return JsonResponse({'status':False, 'message':"Unsucessful, No token was provided or token is blaklisted"})
 
-# receives the token
+# receives the session_token
 @api_view(['POST'])
 def logout(request):
-    token = request.data.get('token')
+    token = request.data.get('session_token')
 
     # blacklist the token to log out the user
     if token:
@@ -172,10 +172,10 @@ class RequestList(viewsets.ModelViewSet):
         else:
             serializer.save(status='Assigned', pickup_location=pick, delivery_location=deliver)
 
-# receives a token
+# receives a session_token
 @api_view(['POST'])
 def get_requests(request):
-    token = request.data.get('token')
+    token = request.data.get('session_token')
     blacklisted = BlackList.objects.filter(token=token)
     
     if token and not blacklisted:
@@ -188,11 +188,11 @@ def get_requests(request):
         return JsonResponse({'status':True, 'message':'OK', 'requests': data})
     return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
 
-# receives a token & request_id & status(accept, picked-up, complete, cancel)
+# receives a session_token & request_id & status(accept, picked-up, complete, cancel)
 @api_view(['POST'])
 def update_status(request):
     data = request.data
-    token = data.get('token')
+    token = data.get('session_token')
     request_id = data.get('id')
     status = data.get('status')
     blacklisted = BlackList.objects.filter(token=token)
@@ -226,11 +226,11 @@ def update_status(request):
         return JsonResponse({'status':True, 'message':'OK'})
     return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
 
-# receives a token, request_id & location(json)
+# receives a session_token, request_id & location(json)
 @api_view(['POST'])
 def update_rider_location(request):
     data = request.data
-    token = data.get('token')
+    token = data.get('session_token')
     request_id = data.get('id')
     location = data.get('location')
 
