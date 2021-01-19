@@ -1,3 +1,4 @@
+from math import sin, cos, sqrt, atan2, radians
 from geopy.geocoders import Nominatim
 import json
 
@@ -15,4 +16,22 @@ def code_location(location_name):
     loc["long"] = long
     print(loc)
     return loc
+
+def get_distance(start, stop):
+    R = 6373.0
+
+    lat1 = radians(start['lat'])
+    lon1 = radians(start['long'])
+    lat2 = radians(stop['lat'])
+    lon2 = radians(stop['long'])
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    distance = R * c
+    return round(distance, 2)
+
     

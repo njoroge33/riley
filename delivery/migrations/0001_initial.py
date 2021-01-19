@@ -77,14 +77,4 @@ class Migration(migrations.Migration):
             name='client',
             field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='delivery.client'),
         ),
-        migrations.CreateModel(
-            name='RiderLocation',
-            fields=[
-                ('request', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, serialize=False, to='delivery.request')),
-                ('current_location', django_mysql.models.JSONField(default=dict)),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('rider', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='delivery.rider')),
-            ],
-        ),
     ]

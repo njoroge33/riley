@@ -7,12 +7,17 @@ from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
 from django.http import HttpResponse, JsonResponse
-from rest_framework_simplejwt.tokens import RefreshToken
+# from rest_framework_simplejwt.tokens import RefreshToken
 from .otp import generate_random_otp, get_otp_phone_number, is_otp_expired
-from .code_location import code_location
+from .code_location import code_location, get_distance
 import requests as req
 import jwt
 from geopy.geocoders import Nominatim
+import json
+# from deliver.settings import SECRET_KEY
+
+# key = SECRET_KEY
+
 
 OTP_URL = 'https://pyris.socialcom.co.ke/api/PushSMS.php?'
 OTP_USERNAME = 'sub_api_user'
@@ -30,6 +35,7 @@ class RiderList(viewsets.ModelViewSet):
 @api_view(['POST'])
 def get_otp(request):
     if request.method == "POST":
+        # print(request.headers)
         data = request.data
         phone = data.get('phone')
         imei = data.get('imei')
@@ -39,7 +45,7 @@ def get_otp(request):
         except Exception as e:
             return JsonResponse({'status':False, 'message':'Invalid phone number'})
             # if the rider exists generate and send the otp
-        if rider:
+        if rider and imei:
             otp_number = generate_random_otp(6)
             message = f'<#> Riley: Your verification code is {otp_number}'
 
@@ -49,12 +55,13 @@ def get_otp(request):
             response = req.get(OTP_URL, params=payload, verify=False)
 
             if response.status_code == 200:
-                riders=Rider(phone_number=phone, id=rider.id)
-                token = RefreshToken.for_user(riders)
+                # riders=Rider(phone_number=phone, id=rider.id)
+                token = rider.encode_auth_token(rider.id, request)
                 new_otp = Otp(phone_number=phone, otp=otp_number, imei=imei)
                 new_otp.save()
-                return JsonResponse({'status':True, 'message':'otp sucessfully created', 'otp_token': str(token)})
+                return JsonResponse({'status':True, 'message':'otp sucessfully created', 'otp_token': token.decode()})
             return JsonResponse({'status':False, 'message':'some error occurred.Please try again'})
+        return JsonResponse({'status':False, 'message':'No imei'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
 
 # this recieves phone no., otp_token and otp
@@ -64,7 +71,7 @@ def verify_otp(request):
         data = request.data
         phone = data.get('phone')
         otp_number = data.get('otp')
-        token = data.get('otp_token')
+        otp_token = request.headers.get('Authorization')
     
         try:
             otp = Otp.objects.get(phone_number=phone, otp=otp_number)
@@ -73,8 +80,9 @@ def verify_otp(request):
             return JsonResponse({'status':False, 'message':'Wrong phone number or wrong otp was provided'})
 
         if otp and rider:
-            token = jwt.decode(token, None, None)
-            if token['user_id'] == rider.id:
+            token = jwt.decode(otp_token, None, None)
+            # print(token['sub'])
+            if token['sub'] == rider.id:
                 if not is_otp_expired(otp):
                     # After verifying the otp send the pin to the ider to enable them to login
                     pin = rider.pin
@@ -107,9 +115,9 @@ def login(request):
             return JsonResponse({'status':False, 'message':'Wrong phone number was provided'})
         if rider.pin == int(pin):
             if rider.active:
-                riders=Rider(phone_number=phone, id=rider.id)
-                token = RefreshToken.for_user(riders)
-                return JsonResponse({'status':True, 'message':'logged in sucessfully', 'session_token': str(token)})
+                # riders=Rider(phone_number=phone, id=rider.id)
+                token = rider.encode_auth_token(rider.id, request)
+                return JsonResponse({'status':True, 'message':'logged in sucessfully', 'session_token': token.decode()})
             return JsonResponse({'status':False, 'message':'Sorry, Your account is deactivated.Please, contact the support team'})
         return JsonResponse({'status':False, 'message':'Wrong pin was provided'})
     return Response('bad request', status=status.HTTP_400_BAD_REQUEST)
@@ -118,24 +126,25 @@ def login(request):
 @api_view(['POST'])
 def change_pin(request):
     data = request.data
-    token = data.get('session_token')
+    # token = data.get('session_token')
     old_pin = data.get('old_pin')
     new_pin = data.get('new_pin')
+    session_token = request.headers.get('Authorization')
 
     if len(str(new_pin))== 4:
         defaults={"pin":int(new_pin)}
     else:
         return JsonResponse({'status':False, 'message':'your pin must be 4 digits in length'})
 
-    blacklisted = BlackList.objects.filter(token=token)
+    blacklisted = BlackList.objects.filter(token=session_token)
 
-    if token and not blacklisted:
-        decoded_token = jwt.decode(token, None, None)
-        rider_id = decoded_token['user_id']
-        print(rider_id)
+    if session_token and not blacklisted:
+        decoded_token = jwt.decode(session_token, None, None)
+        rider_id = decoded_token['sub']
+        # print(rider_id)
         try:
             obj = Rider.objects.get(id=rider_id)
-            print(type(obj.pin))
+            # print(type(obj.pin))
             if obj.pin == int(old_pin):
                 for key, value in defaults.items():
                     setattr(obj, key, value)
@@ -149,11 +158,10 @@ def change_pin(request):
 # receives the session_token
 @api_view(['POST'])
 def logout(request):
-    token = request.data.get('session_token')
-
+    session_token = request.headers.get('Authorization')
     # blacklist the token to log out the user
-    if token:
-        blacklist = BlackList(token=token)
+    if session_token:
+        blacklist = BlackList(token=session_token)
         blacklist.save()
         return JsonResponse({'status':True, 'message':"Logged out sucessfully"})
     return JsonResponse({'status':False, 'message':"Command unsucessful, Wrong token was provided"})
@@ -175,7 +183,7 @@ class RequestList(viewsets.ModelViewSet):
 # receives a session_token
 @api_view(['POST'])
 def get_requests(request):
-    token = request.data.get('session_token')
+    token = request.headers.get('Authorization')
     blacklisted = BlackList.objects.filter(token=token)
     
     if token and not blacklisted:
@@ -192,7 +200,7 @@ def get_requests(request):
 @api_view(['POST'])
 def update_status(request):
     data = request.data
-    token = data.get('session_token')
+    token = request.headers.get('Authorization')
     request_id = data.get('id')
     status = data.get('status')
     blacklisted = BlackList.objects.filter(token=token)
@@ -206,9 +214,12 @@ def update_status(request):
             serializer = RequestSerializer(request, data={'status': 'Accepted'}, partial=True)
             if serializer.is_valid():
                 serializer.save()
-        elif status == 'picked_up':
+        elif status == 'picked':
             # create the initial instance location of the rider at the pickup point to beinging tracking
-            new_location_instance = RiderLocation(request=request, rider=request.rider, current_location=request.pickup_location)
+            keys = ['lat', 'long']
+            loc = str({x:request.pickup_location[x] for x in keys}).replace(',', '>')
+            print(loc)
+            new_location_instance = RiderLocation(request=request, rider=request.rider, current_location=[loc])
             new_location_instance.save()
             serializer = RequestSerializer(request, data={'status': 'Enroute'}, partial=True)
             if serializer.is_valid():
@@ -230,11 +241,11 @@ def update_status(request):
 @api_view(['POST'])
 def update_rider_location(request):
     data = request.data
-    token = data.get('session_token')
+    token = request.headers.get('Authorization')
     request_id = data.get('id')
     location = data.get('location')
 
-    defaults={"current_location":location}
+    current_location=str(location).replace(',', '>')
     blacklisted = BlackList.objects.filter(token=token)
 
     if token and not blacklisted:
@@ -243,12 +254,60 @@ def update_rider_location(request):
 
         try:
             obj = RiderLocation.objects.get(request=request_id, rider=rider_id)
-            for key, value in defaults.items():
-                setattr(obj, key, value)
+            # for key, value in defaults.items():
+            #     setattr(obj, key, value)
+            obj.current_location.append(current_location)
             obj.save()
             return JsonResponse({'status':True, 'message':'OK'})
         except Exception as e:
             return JsonResponse({'status':False, 'message':"The request doesn't exists"})
+    return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
+
+# receives a session_token & request_id
+@api_view(['POST'])
+def get_current_location(request):
+    data = request.data
+    token = request.headers.get('Authorization')
+    request_id = data.get('id')
+
+    blacklisted = BlackList.objects.filter(token=token)
+
+    if token and not blacklisted:
+        decoded_token = jwt.decode(token, None, None)
+        rider_id = decoded_token['user_id']
+
+        try:
+            rider_location = RiderLocation.objects.get(request=request_id, rider=rider_id)
+            # for key, value in defaults.items():
+            #     setattr(obj, key, value)
+            rider=rider_location.current_location[-1].replace('>', ',')
+            print(rider)
+            # obj.save()
+            return JsonResponse({'status':True, 'message':'OK', 'rider':rider})
+        except Exception as e:
+            return JsonResponse({'status':False, 'message':"The request doesn't exists"})
+    return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
+
+# receives a session_token
+@api_view(['POST'])
+def get_rides(request):
+    token = request.headers.get('Authorization')
+    blacklisted = BlackList.objects.filter(token=token)
+    
+    if token and not blacklisted:
+        decoded_token = jwt.decode(token, None, None)
+        rider_id = decoded_token['user_id']
+
+        results = Request.objects.filter(rider=rider_id, status="Completed")
+        rides = []
+
+        for result in results:
+            ride = { 'destination': result.delivery_location,'pickup' :result.pickup_location,
+            'distance' : get_distance(result.pickup_location, result.delivery_location)}
+
+            rides.append(ride)
+
+        return JsonResponse({'status':True, 'message':'OK', 'rides': rides})
     return JsonResponse({'status':False, 'message':"No token was provided or token is blaklisted"})
 
 @api_view(['POST'])

@@ -1,5 +1,11 @@
 from django.db import models
-from django_mysql.models import JSONField
+from django.db.models import CharField
+from django_mysql.models import JSONField, ListTextField
+import datetime
+import jwt
+from deliver.settings import SECRET_KEY
+
+key = SECRET_KEY
 
 # import datetime
 # from phonenumber_field.modelfields import PhoneNumberField
@@ -28,6 +34,24 @@ class Rider(models.Model):
 
     def __str__(self):
        return f'{self.name}'
+
+    def encode_auth_token(self, user_id, request=None):
+        """
+        Generates the Auth Token
+        :return: string
+        """
+        payload = {
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1, seconds=5),
+                'iat': datetime.datetime.utcnow(),
+                'sub': user_id
+            }
+        return jwt.encode(
+                payload,
+                key,
+                algorithm='HS256'
+            )
+
+    
 
 class Otp(models.Model):
     phone_number = models.CharField(max_length=20)
@@ -65,7 +89,7 @@ class RiderLocation(models.Model):
     # status = status = models.BooleanField(null=False, default=True)
     request = models.OneToOneField(Request, on_delete=models.CASCADE, primary_key=True)
     rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
-    current_location = JSONField()
+    current_location = ListTextField(base_field=CharField(max_length=60))
     date_created = models.DateTimeField(auto_now_add=True)
     date_modified = models.DateTimeField(auto_now=True)
     

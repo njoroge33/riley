@@ -18,5 +18,7 @@ urlpatterns = [
     path('api/requests/get', views.get_requests, name='requests'),
     path('api/requests/status', views.update_status, name='status'),
     path('api/location/update', views.update_rider_location, name='location_update'),
+    path('api/location/get', views.get_current_location, name='current_location'),
+    path('api/rides/get', views.get_rides, name='rides'),
     path('api/newclient', views.create_client, name='client')
 ]
