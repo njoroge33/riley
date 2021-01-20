@@ -3,7 +3,9 @@ from django.db.models import CharField
 from django_mysql.models import JSONField, ListTextField
 import datetime
 import jwt
+# from .otp import generate_random_otp
 from deliver.settings import SECRET_KEY
+# from base import *
 
 key = SECRET_KEY
 
@@ -43,13 +45,51 @@ class Rider(models.Model):
         payload = {
                 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1, seconds=5),
                 'iat': datetime.datetime.utcnow(),
-                'sub': user_id
+                'sub': user_id,
+                "token_type":"access",
             }
         return jwt.encode(
                 payload,
                 key,
                 algorithm='HS256'
             )
+    
+    @staticmethod  
+    def decode_auth_token(session_token, request=None):
+        """
+        Decodes the auth token
+        :param auth_token:
+        :return: string
+        """
+        try:
+            payload = jwt.decode(session_token, key)
+            is_blacklisted_token = BlackList.objects.filter(token=session_token)
+            if is_blacklisted_token:
+                response = 'Token blacklisted. Please log in again.'
+
+                #  log blacklisted token
+                # critical_logger.critical(f'[{request.remote_addr}] - {__name__}.decode_auth_token() - Decode blacklisted token failure - Payload token: {auth_token} - Response: {response}')
+
+                return response
+            else:
+                # if payload['token_type'] and payload['unique'] and not payload['jti']:
+                #     response = 'Invalid token. Please log in again.'
+                #     return response
+                return payload['sub']
+        except jwt.ExpiredSignatureError:
+            response = 'Signature expired. Please log in again.'
+
+            #  log expired token
+            # critical_logger.critical(f'[{request.remote_addr}] - {__name__}.decode_auth_token() - Decode expired token failure - Payload token: {auth_token} - Response: {response}')
+
+            return response
+        except jwt.InvalidTokenError:
+            response = 'Invalid token. Please log in again.'
+
+            #  log invalid token
+            # critical_logger.critical(f'[{request.remote_addr}] - {__name__}.decode_auth_token() - Decode invalid token failure - Payload token: {auth_token} - Response: {response}')
+            
+            return response
 
     
 
