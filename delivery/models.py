@@ -127,12 +127,22 @@ class RiderLocation(models.Model):
     # client = models.ForeignKey(Client, on_delete=models.CASCADE)
     # branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
     # status = status = models.BooleanField(null=False, default=True)
+    # request = models.OneToOneField(Request, on_delete=models.CASCADE, primary_key=True)
+    rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
+    current_location = JSONField()
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_modified = models.DateTimeField(auto_now=True)
+    
+    
+class RequestLocation(models.Model):
+    # rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
+    # client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    # branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
+    # status = status = models.BooleanField(null=False, default=True)
     request = models.OneToOneField(Request, on_delete=models.CASCADE, primary_key=True)
     rider = models.ForeignKey(Rider, on_delete=models.CASCADE)
     current_location = ListTextField(base_field=CharField(max_length=60))
     date_created = models.DateTimeField(auto_now_add=True)
     date_modified = models.DateTimeField(auto_now=True)
-    
-
 
   

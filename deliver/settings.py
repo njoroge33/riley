@@ -136,3 +136,56 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.1/howto/static-files/
 
 STATIC_URL = '/static/'
+
+import os
+
+LOGGING = {
+    'version': 1,
+    'loggers': {
+        # 'django.request': {
+        # 'handlers':['file'],
+        # 'level': 'ERROR'
+        # },
+
+        'django': {
+        'handlers':['file','file2'],
+        'level': 'DEBUG'
+        }
+    },
+
+    'handlers': {
+        'file':{
+            'level': 'ERROR',
+            'class': 'logging.FileHandler',
+            # 'filename': './logs/error.log',
+            'filename': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs/error.log'),
+            'formatter': 'verbose'
+        },
+
+        'file1':{
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': './logs/debug.log',
+            'formatter': 'verbose'
+        },
+
+        'file2':{
+            'level': 'CRITICAL',
+            'class': 'logging.FileHandler',
+            # 'filename': os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'filename': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs/critical.log'),
+            'formatter': 'verbose'
+        }
+    },
+    
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} - {levelname} - {pathname} - {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+}

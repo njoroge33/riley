@@ -20,5 +20,6 @@ urlpatterns = [
     path('api/location/update', views.update_rider_location, name='location_update'),
     path('api/location/get', views.get_current_location, name='current_location'),
     path('api/rides/get', views.get_rides, name='rides'),
+    path('api/rider/info', views.get_rider_info, name='info'),
     path('api/newclient', views.create_client, name='client')
 ]

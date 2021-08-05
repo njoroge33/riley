@@ -1,6 +1,7 @@
 from math import sin, cos, sqrt, atan2, radians
 from geopy.geocoders import Nominatim
 import json
+import datetime
 
 def code_location(location_name):
     geolocator = Nominatim(user_agent="deli")
@@ -32,6 +33,29 @@ def get_distance(start, stop):
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
 
     distance = R * c
-    return round(distance, 2)
+    return round(distance, 1)
+
+def get_duration(start, stop):
+
+    fmt = '%Y-%m-%d %H:%M:%S'
+
+    start_time =datetime.datetime.strptime(start.strftime(fmt) , fmt)
+    stop_time = datetime.datetime.strptime(stop.strftime(fmt) , fmt)
+    diff_minutes = int((stop_time - start_time).total_seconds() // 60)
+    duration = str(datetime.timedelta(minutes= diff_minutes)).split(':')
+
+    if duration[0] == "0":
+        return duration[1] + ' minutes'
+    else:
+        return duration[0] + ' hours' + ' ' + duration[1] + ' minutes'
+
+def get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+    
 
     
